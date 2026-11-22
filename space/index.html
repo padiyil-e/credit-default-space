@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Default Risk</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --ink:#1d2433; --muted:#5b6478; --line:#dfe3ea; --bg:#f6f7f9; --accent:#2f5bd3; --risk:#b3261e; --ok:#1e7a46; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width:980px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  p.lede { color:var(--muted); margin:0 0 22px; max-width:760px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:18px; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; }
+  .tabs button { border:1px solid var(--line); background:#fff; padding:8px 14px; border-radius:8px; cursor:pointer; font:inherit; }
+  .tabs button.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+  label { display:flex; flex-direction:column; font-size:13px; color:var(--muted); gap:4px; }
+  input, select { font:inherit; color:var(--ink); padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  fieldset { border:none; padding:0; margin:0 0 16px; }
+  legend { font-weight:600; margin-bottom:8px; font-size:14px; }
+  button.primary { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer; }
+  button.primary:disabled { opacity:.5; cursor:wait; }
+  #result { margin-top:18px; display:none; }
+  .meter { height:12px; background:#eceff4; border-radius:6px; overflow:hidden; position:relative; margin:8px 0 4px; }
+  .meter span { display:block; height:100%; background:var(--accent); }
+  .meter i { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); }
+  .verdict { font-size:20px; font-weight:700; }
+  .verdict.risk { color:var(--risk); } .verdict.ok { color:var(--ok); }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  .muted { color:var(--muted); font-size:13px; }
+  .hidden { display:none; }
+  #status { color:var(--muted); font-size:13px; margin-left:10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Credit card default risk</h1>
+  <p class="lede" id="about">Loading model…</p>
+
+  <div class="tabs">
+    <button class="active" data-tab="single">Single client</button>
+    <button data-tab="batch">Batch (CSV)</button>
+  </div>
+
+  <section class="card" id="tab-single">
+    <form id="form">
+      <fieldset>
+        <legend>Client</legend>
+        <div class="grid">
+          <label>Credit limit (NT$)<input name="LIMIT_BAL" type="number" min="0" value="50000" required></label>
+          <label>Age<input name="AGE" type="number" min="18" max="100" value="35" required></label>
+          <label>Sex<select name="SEX"><option value="2">Female</option><option value="1">Male</option></select></label>
+          <label>Education<select name="EDUCATION"><option value="1">Graduate school</option><option value="2" selected>University</option><option value="3">High school</option><option value="4">Other</option></select></label>
+          <label>Marital status<select name="MARRIAGE"><option value="1">Married</option><option value="2" selected>Single</option><option value="3">Other</option></select></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>Repayment status by month</legend><div class="grid" id="pay"></div></fieldset>
+      <fieldset><legend>Bill amount (NT$)</legend><div class="grid" id="bill"></div></fieldset>
+      <fieldset><legend>Amount paid (NT$)</legend><div class="grid" id="paid"></div></fieldset>
+      <button class="primary" type="submit" disabled>Score client</button><span id="status"></span>
+    </form>
+    <div id="result">
+      <div class="verdict" id="verdict"></div>
+      <div class="meter"><span id="bar"></span><i id="tick"></i></div>
+      <div class="muted" id="detail"></div>
+    </div>
+  </section>
+
+  <section class="card hidden" id="tab-batch">
+    <h2>Score a CSV of clients</h2>
+    <p class="muted" id="cols"></p>
+    <input type="file" id="file" accept=".csv">
+    <p id="batchSummary" class="muted"></p>
+    <p><a id="download" class="hidden" download="scored_clients.csv">Download scored CSV</a></p>
+    <div style="overflow-x:auto"><table id="preview"></table></div>
+  </section>
+
+  <p class="muted">Course project. The model runs entirely in your browser, so no data you enter is sent anywhere. Not for real lending decisions.</p>
+</main>
+
+<script type="module">
+import { predictProba, parseCsv, RAW_COLUMNS, PAY_STATUS, BILL_AMT, PAY_AMT } from "./model.js";
+
+const MONTHS = ["Sep", "Aug", "Jul", "Jun", "May", "Apr"];
+const PAY_OPTIONS = [[-2, "No consumption"], [-1, "Paid in full"], [0, "Revolving credit"],
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((k) => [k, `${k} month${k > 1 ? "s" : ""} late`])];
+
+const el = (id) => document.getElementById(id);
+PAY_STATUS.forEach((c, i) => el("pay").insertAdjacentHTML("beforeend",
+  `<label>${MONTHS[i]}<select name="${c}">${PAY_OPTIONS.map(([v, t]) => `<option value="${v}"${v === 0 ? " selected" : ""}>${t}</option>`).join("")}</select></label>`));
+BILL_AMT.forEach((c, i) => el("bill").insertAdjacentHTML("beforeend", `<label>${MONTHS[i]}<input name="${c}" type="number" value="20000" required></label>`));
+PAY_AMT.forEach((c, i) => el("paid").insertAdjacentHTML("beforeend", `<label>${MONTHS[i]}<input name="${c}" type="number" min="0" value="2000" required></label>`));
+el("cols").textContent = "Required columns (UCI format): " + RAW_COLUMNS.join(", ");
+
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
+  el("tab-single").classList.toggle("hidden", b.dataset.tab !== "single");
+  el("tab-batch").classList.toggle("hidden", b.dataset.tab !== "batch");
+}));
+
+el("status").textContent = "Loading model (2.7 MB)…";
+const [model, meta] = await Promise.all([
+  fetch("model.json").then((r) => r.json()),
+  fetch("metadata.json").then((r) => r.json()),
+]);
+const T = meta.threshold;
+const m = meta.test_metrics[`at_${T}`];
+el("about").textContent = `Random forest (${meta.params.n_estimators} trees, min leaf ${meta.params.min_samples_leaf}) ` +
+  `trained on ${meta.n_train.toLocaleString()} clients of the UCI Default of Credit Card Clients data (Yeh, 2016). ` +
+  `A client is flagged when the predicted probability of default is at least ${T}. Held-out test set: ` +
+  `recall ${m.recall.toFixed(2)}, precision ${m.precision.toFixed(2)}, F1 ${m.f1.toFixed(2)}, AUC ${m.auc.toFixed(3)}.`;
+el("status").textContent = "";
+document.querySelector("button.primary").disabled = false;
+
+el("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const raw = Object.fromEntries(new FormData(e.target));
+  const p = predictProba(model, raw);
+  const flagged = p >= T;
+  el("result").style.display = "block";
+  el("verdict").textContent = flagged ? "High risk: flag for review" : "Lower risk";
+  el("verdict").className = "verdict " + (flagged ? "risk" : "ok");
+  el("bar").style.width = `${(p * 100).toFixed(1)}%`;
+  el("bar").style.background = flagged ? "var(--risk)" : "var(--ok)";
+  el("tick").style.left = `${T * 100}%`;
+  el("detail").textContent = `Predicted probability of default: ${(p * 100).toFixed(1)}% (threshold ${(T * 100).toFixed(0)}%, marked on the bar).`;
+});
+
+el("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const rows = parseCsv(await file.text());
+    const scored = rows.map((r) => { const p = predictProba(model, r); return { ...r, default_probability: p.toFixed(4), flagged: p >= T }; });
+    const cols = Object.keys(scored[0]);
+    const csv = [cols.join(","), ...scored.map((r) => cols.map((c) => r[c]).join(","))].join("\n");
+    el("download").href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    el("download").classList.remove("hidden");
+    const nFlag = scored.filter((r) => r.flagged).length;
+    el("batchSummary").textContent = `${scored.length} clients scored; ${nFlag} flagged for review. First 20 shown.`;
+    const show = ["LIMIT_BAL", "AGE", "PAY_0", "default_probability", "flagged"];
+    el("preview").innerHTML = `<tr>${show.map((c) => `<th>${c}</th>`).join("")}</tr>` +
+      scored.slice(0, 20).map((r) => `<tr>${show.map((c) => `<td>${r[c]}</td>`).join("")}</tr>`).join("");
+  } catch (err) {
+    el("batchSummary").textContent = "Could not score this file: " + err.message;
+    el("download").classList.add("hidden");
+    el("preview").innerHTML = "";
+  }
+});
+</script>
+</body>
+</html>

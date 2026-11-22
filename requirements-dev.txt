@@ -1,3 +1,2 @@
--r space/requirements.txt
-gradio==6.32.0
+-r requirements.txt
 pytest==9.1.1

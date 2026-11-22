@@ -1,0 +1,5 @@
+# Libraries used to train and test the model (the deployed Space itself is static HTML/JS)
+scikit-learn==1.9.1
+joblib==1.6.0
+pandas==3.0.5
+numpy==2.5.3

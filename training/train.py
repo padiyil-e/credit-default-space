@@ -1,7 +1,10 @@
-"""Train the tuned random forest from Module 8 and save it for the Space.
+"""Train the tuned random forest from Module 8 and export it for the static Space.
 
 Usage:  python training/train.py
-Writes space/model/model.joblib and space/model/metadata.json.
+Writes:
+  model/model.joblib        scikit-learn model (source of truth, used by the tests)
+  space/model.json          the same forest as plain arrays, run in the browser by model.js
+  space/metadata.json       params, threshold, feature order, test metrics, versions
 """
 from __future__ import annotations
 
@@ -22,11 +25,12 @@ from sklearn.metrics import (accuracy_score, f1_score, precision_score,
 from sklearn.model_selection import train_test_split
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "space"))
+sys.path.insert(0, str(ROOT / "training"))
 from features import FEATURE_COLUMNS, TARGET, build_features  # noqa: E402
 
 DATA = ROOT / "data" / "credit_default.csv"
-MODEL_DIR = ROOT / "space" / "model"
+MODEL_PATH = ROOT / "model" / "model.joblib"
+SPACE = ROOT / "space"
 SEED = 20
 THRESHOLD = 0.29  # chosen in Module 8 from out-of-fold training predictions
 PARAMS = dict(n_estimators=200, max_depth=None, min_samples_leaf=50,
@@ -50,6 +54,25 @@ def metrics(y, p, threshold):
             "auc": round(roc_auc_score(y, p), 4)}
 
 
+def export_forest(model) -> dict:
+    """Write each tree as parallel arrays: split feature (-1 = leaf), threshold,
+    left/right child, and P(default) at leaves. Thresholds keep full float64 precision."""
+    trees = []
+    for est in model.estimators_:
+        t = est.tree_
+        leaf = t.children_left == -1
+        value = t.value[:, 0, :]
+        p1 = value[:, 1] / value.sum(axis=1)
+        trees.append({
+            "f": np.where(leaf, -1, t.feature).tolist(),
+            "t": np.where(leaf, 0.0, t.threshold).tolist(),
+            "l": t.children_left.tolist(),
+            "r": t.children_right.tolist(),
+            "v": np.where(leaf, p1, 0.0).tolist(),
+        })
+    return {"features": FEATURE_COLUMNS, "trees": trees}
+
+
 def main():
     X_tr, X_te, y_tr, y_te = load_split()
     model = RandomForestClassifier(**PARAMS)
@@ -58,8 +81,9 @@ def main():
     fit_s = time.perf_counter() - t0
     p = model.predict_proba(X_te)[:, 1]
 
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, MODEL_DIR / "model.joblib", compress=3)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, MODEL_PATH, compress=3)
+    (SPACE / "model.json").write_text(json.dumps(export_forest(model), separators=(",", ":")))
     meta = {
         "model": "RandomForestClassifier (tuned, Module 8)",
         "params": {k: v for k, v in PARAMS.items() if k != "n_jobs"},
@@ -73,10 +97,10 @@ def main():
         "python_version": platform.python_version(),
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    (MODEL_DIR / "metadata.json").write_text(json.dumps(meta, indent=2))
-    size_mb = (MODEL_DIR / "model.joblib").stat().st_size / 1e6
+    (SPACE / "metadata.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps(meta["test_metrics"], indent=2))
-    print(f"fit {fit_s:.1f}s, model file {size_mb:.2f} MB")
+    print(f"fit {fit_s:.1f}s | joblib {MODEL_PATH.stat().st_size / 1e6:.2f} MB | "
+          f"model.json {(SPACE / 'model.json').stat().st_size / 1e6:.2f} MB")
 
 
 if __name__ == "__main__":

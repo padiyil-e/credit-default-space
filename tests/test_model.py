@@ -11,8 +11,10 @@ from sklearn.metrics import f1_score, recall_score, roc_auc_score
 from features import FEATURE_COLUMNS
 from train import load_split
 
-SPACE = Path(__file__).resolve().parents[1] / "space"
-META = json.loads((SPACE / "model" / "metadata.json").read_text())
+ROOT = Path(__file__).resolve().parents[1]
+SPACE = ROOT / "space"
+MODEL = ROOT / "model" / "model.joblib"
+META = json.loads((SPACE / "metadata.json").read_text())
 
 # Floors set a little below the Module 8 test results (AUC 0.775, recall 0.542, F1 0.530)
 MIN_AUC, MIN_RECALL, MIN_F1 = 0.76, 0.50, 0.50
@@ -20,7 +22,7 @@ MIN_AUC, MIN_RECALL, MIN_F1 = 0.76, 0.50, 0.50
 
 @pytest.fixture(scope="module")
 def model():
-    return joblib.load(SPACE / "model" / "model.joblib")
+    return joblib.load(MODEL)
 
 
 @pytest.fixture(scope="module")
@@ -35,7 +37,7 @@ def test_model_expects_the_feature_pipeline(model):
 
 
 def test_sklearn_version_matches_pin():
-    pinned = re.search(r"scikit-learn==([\d.]+)", (SPACE / "requirements.txt").read_text()).group(1)
+    pinned = re.search(r"scikit-learn==([\d.]+)", (ROOT / "requirements.txt").read_text()).group(1)
     assert META["sklearn_version"] == pinned == sklearn.__version__
 
 
@@ -52,6 +54,7 @@ def test_performance_gate(test_scores):
     assert f1_score(y, pred) >= MIN_F1
 
 
-def test_model_file_fits_space_limit():
-    # Plain git pushes to a Space need LFS/Xet above 10 MB; keep the artifact small.
-    assert (SPACE / "model" / "model.joblib").stat().st_size < 10 * 1024 * 1024
+def test_space_files_stay_small():
+    # Plain git pushes to a Space need LFS/Xet above 10 MB; the browser also downloads model.json.
+    for f in SPACE.iterdir():
+        assert f.stat().st_size < 10 * 1024 * 1024, f.name
