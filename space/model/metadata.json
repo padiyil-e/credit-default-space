@@ -1,0 +1,67 @@
+{
+  "model": "RandomForestClassifier (tuned, Module 8)",
+  "params": {
+    "n_estimators": 200,
+    "max_depth": null,
+    "min_samples_leaf": 50,
+    "max_features": "sqrt",
+    "class_weight": null,
+    "random_state": 20
+  },
+  "threshold": 0.29,
+  "features": [
+    "LIMIT_BAL",
+    "AGE",
+    "PAY_0",
+    "PAY_2",
+    "PAY_3",
+    "PAY_4",
+    "PAY_5",
+    "PAY_6",
+    "BILL_AMT1",
+    "BILL_AMT2",
+    "BILL_AMT3",
+    "BILL_AMT4",
+    "BILL_AMT5",
+    "BILL_AMT6",
+    "PAY_AMT1",
+    "PAY_AMT2",
+    "PAY_AMT3",
+    "PAY_AMT4",
+    "PAY_AMT5",
+    "PAY_AMT6",
+    "MONTHS_DELINQUENT",
+    "MAX_DELINQUENCY",
+    "AVG_UTILIZATION",
+    "SEX_female",
+    "EDUCATION_university",
+    "EDUCATION_high_school",
+    "EDUCATION_other",
+    "MARRIAGE_single",
+    "MARRIAGE_other"
+  ],
+  "n_train": 24000,
+  "n_test": 6000,
+  "test_metrics": {
+    "at_0.50": {
+      "threshold": 0.5,
+      "accuracy": 0.8222,
+      "precision": 0.6791,
+      "recall": 0.3715,
+      "f1": 0.4803,
+      "auc": 0.7759
+    },
+    "at_0.29": {
+      "threshold": 0.29,
+      "accuracy": 0.7872,
+      "precision": 0.518,
+      "recall": 0.5411,
+      "f1": 0.5293,
+      "auc": 0.7759
+    }
+  },
+  "fit_seconds": 2.6,
+  "sklearn_version": "1.9.1",
+  "python_version": "3.12.13",
+  "trained_at": "2026-11-22T19:34:39+00:00"
+}
