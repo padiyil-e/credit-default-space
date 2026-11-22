@@ -39,5 +39,5 @@ jobs:
           huggingface_repo_id: ${{ vars.HF_SPACE_ID }}
           hf_token: ${{ secrets.HF_TOKEN }}
           repo_type: space
-          space_sdk: gradio
+          space_sdk: static
           subdirectory: space
